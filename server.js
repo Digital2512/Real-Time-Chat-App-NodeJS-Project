@@ -23,15 +23,17 @@ io.on('connection', (socket) => {
         console.log(`${username} joined the chat`);
     });
 
-    socket.on('chat message', (message) => {
-        io.emit('chat message', message);
+    socket.on('chat message', ({username, message}) => {
+        const displayName = (username === socket.username) ? 'You' : username;
+        io.emit('chat message', {username: displayName, message});
     });
 
     socket.on('private message', ({recipient, message, isSelf}) => {
-        if(!messages[recipient]){
-            messages[recipient] = [];
+        const recipientKey = [socket.id, recipient].sort().join('-');
+        if(!messages[recipientKey]){
+            messages[recipientKey] = [];
         }
-        messages[recipient].push({username: socket.username, message: message});
+        messages[recipientKey].push({username: socket.username, message: message});
 
         if(isSelf){
             socket.emit('private message', {username: 'You', message: message});
@@ -41,8 +43,13 @@ io.on('connection', (socket) => {
     });
 
     socket.on('get private messages', (recipient) => {
-        if(messages[recipient]){
-            socket.emit('private message history', messages[recipient]);
+        const recipientKey = [socket.id, recipient].sort().join('-');
+        if(messages[recipientKey]){
+            const history = messages[recipientKey].map (message => ({
+                username: (message.username === socket.username) ? 'You' : message.username,
+                message: message.message
+            }));
+            socket.emit('private message history', history);
         }else{
             socket.emit('private message history', []);
         }
