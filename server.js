@@ -1,3 +1,4 @@
+
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
@@ -10,6 +11,8 @@ const getUsernameByID = (id) => users.find(user => user.id === id)?.username;
 
 let users = [];
 let messages = {};
+let groups = {};
+let groupMessages = {};
 
 app.use(express.static('public'));
 
@@ -21,6 +24,55 @@ io.on('connection', (socket) => {
         users.push({id:socket.id, username:socket.username});
         io.emit('users list', users);
         console.log(`${username} joined the chat`);
+    });
+
+    socket.on('create group', (groupName) => {
+        if (!groups[groupName]){
+            groups[groupName] = [];
+            groupMessages[groupName] = [];
+            // io.emit('group created', groupName);
+            groups[groupName].push(socket.id);
+            socket.emit('group created', groupName);
+        }else{
+            socket.emit('group error', `Group ${groupName} has been created. Please try another groups name`);
+        }
+    });
+
+    socket.on('join group', (groupName) => {
+        if(groups[groupName]){
+            if(!groups[groupName].includes(socket.id)){
+                groups[groupName].push(socket.id);
+                console.log(`User ${socket.username} joined group: ${groupName}`);
+            }
+            socket.emit('joined group', groupName);
+
+            if(groupMessages[groupName] && groupMessages[groupName].length > 0){
+                socket.emit('group message history', groupMessages[groupName])
+            }
+        }else{
+            socket.emit('group error', `Group ${groupName} not found. Please try another groups name`);
+        }
+    });
+
+    socket.on('group message', ({groupName, message}) => {
+        console.log(`Group Name: ${groupName}, Message: ${message}`);
+        if(groups[groupName]){
+            const groupMessage = {username: socket.username, message: message};
+            groupMessages[groupName].push(groupMessage);
+            groups[groupName].forEach(memberID => {
+                io.to(memberID).emit('group message', groupMessage);
+            });
+        }else{
+            socket.on('group error', `Group ${groupName} has been created. Please try another group's name`);
+        }
+    });
+
+    socket.on('get group messages', (groupName) => {
+        if(groupMessages[groupName]){
+            socket.emit('group message history', groupMessages[groupName]);
+        }else{
+            socket.emit('group message history', []);
+        }
     });
 
     socket.on('chat message', ({username, message}) => {
