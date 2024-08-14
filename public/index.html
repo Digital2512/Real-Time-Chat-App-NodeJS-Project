@@ -67,6 +67,7 @@
                 </div>
                 <h3>Groups</h3>
                 <ul id="groups-list" class="users-list"></ul>
+                <button id="public-chat">Public Chat</button>
             </div>
             <div class="messages-section">
                 <ul id="messages"></ul>
@@ -95,6 +96,7 @@
         const createGroupButton = document.getElementById('create-group');
         const joinGroupButton = document.getElementById('join-group');
         const disconnectButton = document.getElementById('disconnect');
+        const publicChatButton = document.getElementById('public-chat')
 
         let username;
         let activeRecipient = null;
@@ -110,6 +112,11 @@
             activeRecipient = null;
         });
 
+        publicChatButton.addEventListener('click', () => {
+            activeRecipient = 'public';
+            socket.emit('get public messages');
+        })
+
         joinChatButton.addEventListener('click', () => {
             username = usernameInput.value.trim();
             if (username) {
@@ -119,18 +126,58 @@
             }
         });
 
+        //add a chat message which connects all group, individual and public
         form.addEventListener('submit', (e) => {
-            console.log(`Active Recipient: ${activeRecipient}`);
             e.preventDefault();
             if (input.value && activeRecipient) {
-                if (activeRecipient.startsWith('group-')) {
-                    const groupName = activeRecipient.slice(6); 
-                    socket.emit('group message', { groupName, message: input.value });
-                } else {
-                    socket.emit('private message', { recipient: activeRecipient, message: input.value, isSelf: true });
-                }
+                const message = input.value;
+                const userID = socket.id;
+                socket.emit('chat message', {message, recipient: activeRecipient, user: userID});
                 input.value = '';
+            }else{
+                socket.emit('alert error', 'No active recipient selected');
             }
+        });
+
+        socket.on('users list', (users) => {
+            usersList.innerHTML = '';
+            users.forEach(user => {
+                const item = document.createElement('li');
+                item.textContent = user.username;
+                item.addEventListener('click', () => {
+                    activeRecipient = user.id;
+                    socket.emit('get private messages', user.id);
+                });
+                usersList.appendChild(item);
+            });
+        });
+
+        socket.on('groups list', (groups) => {
+            groupsList.innerHTML = '';
+            groups.forEach(group => {
+                const item = document.createElement('li');
+                item.textContent = group;
+                item.addEventListener('click', () => {
+                    activeRecipient = `group-${group}`;
+                    socket.emit('get group messages', group);
+                });
+                groupsList.appendChild(item);
+            });
+        });
+
+        socket.on('public message history', (history) => {
+            messages.innerHTML = '';
+            history.forEach(data => {
+                const item = document.createElement('li');
+                if(data.username === socket.username){
+                    const usernameAlias = 'You';
+                    item.textContent = `${usernameAlias}: ${data.message}`;    
+                }else{
+                    item.textContent = `${data.username}: ${data.message}`;
+                }
+                messages.appendChild(item);
+            });
+            window.scrollTo(0, document.body.scrollHeight);
         });
 
         createGroupButton.addEventListener('click', () => {
@@ -147,7 +194,7 @@
             }
         });
 
-        socket.on('group error', (errorMessage) => {
+        socket.on('alert error', (errorMessage) => {
             alert(errorMessage);
         })
 
@@ -161,7 +208,6 @@
                     activeRecipient = `group-${groupName}`;
                     socket.emit('get group messages', groupName);
                 });
-                groupsList.appendChild(item);
             }
         });
 
@@ -174,29 +220,52 @@
                 item.addEventListener('click', () => {
                     socket.emit('get group messages', groupName);
                 });
-                groupsList.appendChild(item);
             }
         });
 
-        socket.on('chat message', (data) => {
+        // socket.on('chat message', (data) => {
+        //     const item = document.createElement('li');
+        //     item.textContent = `${data.username}: ${data.message}`;
+        //     messages.appendChild(item);
+        //     window.scrollTo(0, document.body.scrollHeight);
+        // });
+
+        socket.on('self private message print', (data) => {
             const item = document.createElement('li');
             item.textContent = `${data.username}: ${data.message}`;
             messages.appendChild(item);
             window.scrollTo(0, document.body.scrollHeight);
+            const userID = data.user;
+            const recipientID = data.recipient;
+            socket.emit('get private messages', userID);
         });
 
-        socket.on('private message', (data) => {
+        socket.on('private message print', (data) => {
             const item = document.createElement('li');
             item.textContent = `${data.username}: ${data.message}`;
             messages.appendChild(item);
             window.scrollTo(0, document.body.scrollHeight);
+            const userID = data.user;
+            const recipientID = data.recipient;
+            socket.emit('get private messages', recipientID);
+            io.emit('get private messages', userID);
         });
 
-        socket.on('group message', (data) => {
+        socket.on('group message print', (data) => {
             const item = document.createElement('li');
             item.textContent = `${data.username}: ${data.message}`;
             messages.appendChild(item);
             window.scrollTo(0, document.body.scrollHeight);
+            const groupName = data.groupName;
+            socket.emit('get group messages', groupName);
+        });
+
+        socket.on('public message print', (data) => {
+            const item = document.createElement('li');
+            item.textContent = `${data.username}: ${data.message}`;
+            messages.appendChild(item);
+            window.scrollTo(0, document.body.scrollHeight);
+            socket.emit('get public messages');
         });
 
         socket.on('group message history', (history) => {
@@ -207,19 +276,6 @@
                 messages.appendChild(item);
             })
             window.scrollTo(0, document.body.scrollHeight);
-        });
-
-        socket.on('users list', (users) => {
-            usersList.innerHTML = '';
-            users.forEach(user => {
-                const item = document.createElement('li');
-                item.textContent = user.username;
-                item.addEventListener('click', () => {
-                    activeRecipient = user.id;
-                    socket.emit('get private messages', user.id);
-                });
-                usersList.appendChild(item);
-            });
         });
 
         socket.on('private message history', (history) => {
